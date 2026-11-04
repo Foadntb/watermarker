@@ -59,7 +59,7 @@ fun MainScreen(vm: MainViewModel) {
 
     val pickPhotos = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia()
-    ) { uris -> if (uris.isNotEmpty()) vm.setPhotos(uris) }
+    ) { uris -> if (uris.isNotEmpty()) vm.selectPhotos(uris) }
 
     val createZip = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip")

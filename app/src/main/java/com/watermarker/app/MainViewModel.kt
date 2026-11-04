@@ -52,7 +52,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun setPhotos(uris: List<Uri>) {
+    fun selectPhotos(uris: List<Uri>) {
         photos = uris
         previewBase = null
         refreshPreview()
