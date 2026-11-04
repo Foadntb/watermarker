@@ -1,7 +1,10 @@
 package com.watermarker.app
 
 import android.app.Application
+import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.RectF
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -13,10 +16,15 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
-    var settings by mutableStateOf(WatermarkSettings())
+    private val prefs = app.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    private val logoFile = File(app.filesDir, "logo.png")
+
+    var settings by mutableStateOf(loadSettings())
         private set
     var logo by mutableStateOf<Bitmap?>(null)
         private set
@@ -31,17 +39,70 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var message by mutableStateOf<String?>(null)
 
     private var previewBase: Bitmap? = null
+    private var previewFaces: List<RectF>? = null
     private var previewJob: Job? = null
+
+    init {
+        // لوگوی ذخیره‌شدهٔ دفعهٔ قبل را برگردان
+        viewModelScope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                if (logoFile.exists()) BitmapFactory.decodeFile(logoFile.absolutePath) else null
+            }
+            if (saved != null && logo == null) {
+                logo = saved
+                refreshPreview()
+            }
+        }
+    }
+
+    // --------------------------------------------------------------- settings
+
+    private fun loadSettings(): WatermarkSettings {
+        val d = WatermarkSettings()
+        return WatermarkSettings(
+            mode = runCatching { MarkMode.valueOf(prefs.getString("mode", d.mode.name) ?: d.mode.name) }
+                .getOrDefault(d.mode),
+            text = prefs.getString("text", d.text) ?: d.text,
+            sizePercent = prefs.getFloat("size", d.sizePercent),
+            opacity = prefs.getFloat("opacity", d.opacity),
+            placement = runCatching {
+                Placement.valueOf(prefs.getString("placement", d.placement.name) ?: d.placement.name)
+            }.getOrDefault(d.placement),
+            tiled = prefs.getBoolean("tiled", d.tiled),
+            avoidFaces = prefs.getBoolean("faces", d.avoidFaces),
+        )
+    }
+
+    private fun saveSettings(s: WatermarkSettings) {
+        prefs.edit()
+            .putString("mode", s.mode.name)
+            .putString("text", s.text)
+            .putFloat("size", s.sizePercent)
+            .putFloat("opacity", s.opacity)
+            .putString("placement", s.placement.name)
+            .putBoolean("tiled", s.tiled)
+            .putBoolean("faces", s.avoidFaces)
+            .apply()
+    }
 
     fun update(block: WatermarkSettings.() -> WatermarkSettings) {
         settings = settings.block()
+        saveSettings(settings)
         refreshPreview()
     }
+
+    // ------------------------------------------------------------------ inputs
 
     fun setLogo(uri: Uri) {
         viewModelScope.launch {
             val bmp = withContext(Dispatchers.IO) {
-                WatermarkEngine.decode(getApplication(), uri, maxSide = 1024)
+                WatermarkEngine.decode(getApplication(), uri, maxSide = 1024)?.also { b ->
+                    try {
+                        FileOutputStream(logoFile).use { b.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                    } catch (e: Exception) {
+                        // ذخیرهٔ لوگو اختیاری است؛ اگر نشد، فقط برای همین بار می‌ماند
+                    }
+                }
             }
             if (bmp == null) {
                 message = "این فایل لوگو قابل خواندن نیست"
@@ -55,22 +116,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun selectPhotos(uris: List<Uri>) {
         photos = uris
         previewBase = null
+        previewFaces = null
         refreshPreview()
     }
+
+    // ----------------------------------------------------------------- preview
 
     private fun refreshPreview() {
         previewJob?.cancel()
         val first = photos.firstOrNull() ?: run { preview = null; return }
         previewJob = viewModelScope.launch {
             delay(120)
+            val s = settings
             val result = withContext(Dispatchers.Default) {
-                val base = previewBase ?: WatermarkEngine.decode(getApplication(), first, 1280)
-                    ?.also { previewBase = it }
-                base?.let { WatermarkEngine.apply(it, logo, settings) }
+                val base = previewBase
+                    ?: WatermarkEngine.decode(getApplication(), first, 1280)?.also { previewBase = it }
+                if (base == null) {
+                    null
+                } else {
+                    val needFaces = s.avoidFaces && s.placement == Placement.AUTO && !s.tiled
+                    val faces = if (needFaces) {
+                        previewFaces ?: FaceFinder.detect(base).also { previewFaces = it }
+                    } else {
+                        emptyList()
+                    }
+                    WatermarkEngine.apply(base, logo, s, faces)
+                }
             }
             preview = result
         }
     }
+
+    // ------------------------------------------------------------------ export
 
     val canExport: Boolean
         get() = photos.isNotEmpty() && progress == null &&

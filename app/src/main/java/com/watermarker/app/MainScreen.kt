@@ -3,7 +3,9 @@ package com.watermarker.app
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,13 +20,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconToggleButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -36,8 +42,10 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -45,6 +53,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
@@ -73,6 +83,7 @@ fun MainScreen(vm: MainViewModel) {
     }
 
     val imageOnly = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+    val s = vm.settings
 
     Scaffold(
         topBar = {
@@ -82,12 +93,17 @@ fun MainScreen(vm: MainViewModel) {
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = {
-                    if (vm.canExport) createZip.launch("watermarked_photos.zip")
-                    else vm.message = when {
-                        vm.photos.isEmpty() -> "اول عکس‌ها را انتخاب کن"
-                        else -> "لوگو یا متن واترمارک را مشخص کن"
+                    if (vm.canExport) {
+                        createZip.launch("watermarked_photos.zip")
+                    } else {
+                        vm.message = if (vm.photos.isEmpty()) {
+                            "اول عکس‌ها را انتخاب کن"
+                        } else {
+                            "لوگو یا متن واترمارک را مشخص کن"
+                        }
                     }
                 },
+                shape = MaterialTheme.shapes.small,
                 icon = { Icon(Icons.Outlined.FolderZip, contentDescription = null) },
                 text = { Text("ساخت فایل ZIP") },
             )
@@ -100,12 +116,12 @@ fun MainScreen(vm: MainViewModel) {
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            vm.progress?.let {
-                LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth())
+            vm.progress?.let { p ->
+                LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
             }
 
             // ------------------------------------------------ پیش‌نمایش / عکس‌ها
-            ElevatedCard(Modifier.fillMaxWidth()) {
+            AmplifyCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("عکس‌ها", style = MaterialTheme.typography.titleMedium)
 
@@ -145,7 +161,7 @@ fun MainScreen(vm: MainViewModel) {
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        FilledTonalButton(onClick = { pickPhotos.launch(imageOnly) }) {
+                        FilledTonalButton(shape = MaterialTheme.shapes.small, onClick ={ pickPhotos.launch(imageOnly) }) {
                             Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null)
                             Spacer(Modifier.size(8.dp))
                             Text("انتخاب عکس‌ها")
@@ -163,7 +179,7 @@ fun MainScreen(vm: MainViewModel) {
             }
 
             // -------------------------------------------------------- واترمارک
-            ElevatedCard(Modifier.fillMaxWidth()) {
+            AmplifyCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("واترمارک", style = MaterialTheme.typography.titleMedium)
 
@@ -171,14 +187,14 @@ fun MainScreen(vm: MainViewModel) {
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                         modes.forEachIndexed { i, (mode, label) ->
                             SegmentedButton(
-                                selected = vm.settings.mode == mode,
+                                selected = s.mode == mode,
                                 onClick = { vm.update { copy(mode = mode) } },
                                 shape = SegmentedButtonDefaults.itemShape(i, modes.size),
                             ) { Text(label) }
                         }
                     }
 
-                    if (vm.settings.mode != MarkMode.TEXT) {
+                    if (s.mode != MarkMode.TEXT) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             val logo = vm.logo
                             if (logo != null) {
@@ -192,7 +208,7 @@ fun MainScreen(vm: MainViewModel) {
                                 )
                                 Spacer(Modifier.size(12.dp))
                             }
-                            FilledTonalButton(onClick = { pickLogo.launch(imageOnly) }) {
+                            FilledTonalButton(shape = MaterialTheme.shapes.small, onClick ={ pickLogo.launch(imageOnly) }) {
                                 Icon(Icons.Outlined.Image, contentDescription = null)
                                 Spacer(Modifier.size(8.dp))
                                 Text(if (logo == null) "انتخاب لوگو" else "تغییر لوگو")
@@ -207,9 +223,9 @@ fun MainScreen(vm: MainViewModel) {
                         }
                     }
 
-                    if (vm.settings.mode != MarkMode.LOGO) {
+                    if (s.mode != MarkMode.LOGO) {
                         OutlinedTextField(
-                            value = vm.settings.text,
+                            value = s.text,
                             onValueChange = { v -> vm.update { copy(text = v) } },
                             label = { Text("متن واترمارک") },
                             singleLine = true,
@@ -218,30 +234,99 @@ fun MainScreen(vm: MainViewModel) {
                     }
 
                     Text(
-                        "اندازه: ${vm.settings.sizePercent.roundToInt()}٪ عرض عکس",
+                        "اندازه: ${s.sizePercent.roundToInt()}٪ عرض عکس",
                         style = MaterialTheme.typography.labelLarge,
                     )
                     Slider(
-                        value = vm.settings.sizePercent,
+                        value = s.sizePercent,
                         onValueChange = { v -> vm.update { copy(sizePercent = v) } },
                         valueRange = 8f..50f,
                     )
 
                     Text(
-                        "شفافیت: ${(vm.settings.opacity * 100).roundToInt()}٪",
+                        "شفافیت: ${(s.opacity * 100).roundToInt()}٪",
                         style = MaterialTheme.typography.labelLarge,
                     )
                     Slider(
-                        value = vm.settings.opacity,
+                        value = s.opacity,
                         onValueChange = { v -> vm.update { copy(opacity = v) } },
                         valueRange = 0.1f..1f,
                     )
+                }
+            }
 
-                    Text(
-                        "جای واترمارک برای هر عکس خودکار انتخاب می‌شود: کم‌شلوغ‌ترین گوشه یا لبه.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            // ------------------------------------------------------------ جایگذاری
+            AmplifyCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("جایگذاری", style = MaterialTheme.typography.titleMedium)
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("تکرار مورب روی کل عکس")
+                            Text(
+                                "برای محافظت بیشتر در برابر برش‌دادن",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = s.tiled,
+                            onCheckedChange = { v -> vm.update { copy(tiled = v) } },
+                        )
+                    }
+
+                    if (!s.tiled) {
+                        FilterChip(
+                            selected = s.placement == Placement.AUTO,
+                            onClick = { vm.update { copy(placement = Placement.AUTO) } },
+                            label = { Text("خودکار و هوشمند") },
+                        )
+
+                        Text(
+                            "یا یکی از جاها را خودت انتخاب کن:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        // شبکهٔ جای‌ها باید مثل خود عکس چپ‌به‌راست باشد
+                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                for (r in 0..2) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        for (c in 0..2) {
+                                            val p = Placement.values()[1 + r * 3 + c]
+                                            val selected = s.placement == p
+                                            FilledTonalIconToggleButton(
+                                                shape = MaterialTheme.shapes.small,
+                                                checked = selected,
+                                                onCheckedChange = { vm.update { copy(placement = p) } },
+                                            ) {
+                                                if (selected) {
+                                                    Icon(Icons.Outlined.Check, contentDescription = null)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (s.placement == Placement.AUTO) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("دوری از چهره‌ها")
+                                    Text(
+                                        "با تشخیص چهره، واترمارک روی صورت نمی‌افتد",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Switch(
+                                    checked = s.avoidFaces,
+                                    onCheckedChange = { v -> vm.update { copy(avoidFaces = v) } },
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -249,4 +334,19 @@ fun MainScreen(vm: MainViewModel) {
             Spacer(Modifier.height(88.dp))
         }
     }
+}
+
+/** کارت تخت با حاشیهٔ نازک و گوشهٔ کم‌گرد، مثل Card در Amplify UI */
+@Composable
+private fun AmplifyCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    OutlinedCard(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.small,
+        colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        content = content,
+    )
 }
